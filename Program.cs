@@ -48,13 +48,12 @@ namespace ProPresenter_Local_Sync_Tool
             if (_syncMode == 0)
                 foreach (var cfile in compare["conflict"])
                 {
-                    Print("  Conflict with " + cfile);
                     var remoteNewer = cfile[0] == '_';
                     var file = remoteNewer ? cfile.Substring(1) : cfile;
                     Print("  " + (remoteNewer ? "Receiving" : "Uploading") + " " + file);
                     File.Copy(Path.Combine(remoteNewer ? remoteDir : localDir, file),
                         Path.Combine(remoteNewer ? localDir : remoteDir, file),
-                        _syncReplace);
+                        true);
                 }
         }
 
@@ -133,6 +132,7 @@ namespace ProPresenter_Local_Sync_Tool
                 Print("Error: Sync source not specified");
                 Environment.Exit(-2);
             }
+            if (!dirSource.EndsWith("\\")) dirSource += "\\";
 
             var syncLibrary = args.SyncLibrary || args.SyncLibraryNo
                 ? args.SyncLibrary
@@ -164,7 +164,7 @@ namespace ProPresenter_Local_Sync_Tool
                 }.IndexOf(
                     syncPreferences["RVPreferencesSynchronization"]["SyncMode"].InnerText) - 1;
             Print("Sync Mode: " + new List<string> { "Down", "Both", "Up" }[_syncMode + 1]);
-            Print("Sync Replace: " + (_syncReplace ? "Yes" : "No"));
+            if (_syncMode != 0) Print("Sync Replace: " + (_syncReplace ? "Yes" : "No"));
             Print("Library: " + (syncLibrary ? "Yes" : "No"));
             Print("Playlist: " + (syncPlaylist ? "Yes" : "No"));
             Print("Templates: " + (syncTemplate ? "Yes" : "No"));
@@ -209,13 +209,18 @@ namespace ProPresenter_Local_Sync_Tool
                 {
                     var playlist = new XmlDocument();
                     playlist.PreserveWhitespace = true;
-                    playlist.Load(Path.Combine(dirSource, "__Playlist_Data\\Default.pro6pl"));
-                    foreach (XmlNode item in playlist.GetElementsByTagName("RVDocumentCue"))
-                        item.Attributes["filePath"].Value =
-                            Uri.EscapeDataString(localLibrary) + item.Attributes["filePath"].Value
-                                .Split(new[] { "%5C" }, StringSplitOptions.None).Reverse()
-                                .ToArray()[0];
-                    playlist.Save(Path.Combine(appDataLocation, "PlaylistData\\Default.pro6pl"));
+                    var remotePlaylist = Path.Combine(dirSource, "__Playlist_Data");
+                    Directory.CreateDirectory(remotePlaylist);
+                    foreach (var file in Directory.GetFiles(remotePlaylist, "*.pro6pl"))
+                    {
+                        playlist.Load(file);
+                        foreach (XmlNode item in playlist.GetElementsByTagName("RVDocumentCue"))
+                            item.Attributes["filePath"].Value =
+                                Uri.EscapeDataString(localLibrary) + item.Attributes["filePath"].Value
+                                    .Split(new[] { "%5C" }, StringSplitOptions.None).Reverse()
+                                    .ToArray()[0];
+                        playlist.Save(Path.Combine(appDataLocation, "PlaylistData", Path.GetFileName(file)));
+                    }
                 }
             }
             /*
