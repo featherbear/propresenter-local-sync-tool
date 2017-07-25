@@ -13,20 +13,6 @@ namespace ProPresenter_Local_Sync_Tool
             return val == "true";
         }
 
-        public static void CopyDir(string sourcePath, string destinationPath, bool replace = false)
-        {
-            Directory.CreateDirectory(destinationPath);
-
-            foreach (var dirPath in Directory.GetDirectories(sourcePath, "*",
-                SearchOption.AllDirectories))
-                Directory.CreateDirectory(dirPath.Replace(sourcePath, destinationPath));
-
-            //Copy all the files & Replaces any files with the same name
-            foreach (var newPath in Directory.GetFiles(sourcePath, "*.*",
-                SearchOption.AllDirectories))
-                File.Copy(newPath, newPath.Replace(sourcePath, destinationPath), replace);
-        }
-
         private static List<string> _CompareDirectory(string remoteDir, string localDir, List<string> ignore,
             List<string> conflict)
         {
