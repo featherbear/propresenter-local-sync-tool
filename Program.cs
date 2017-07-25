@@ -4,26 +4,63 @@ using System.IO;
 using System.Linq;
 using System.Xml;
 using CommandLine;
-using CommandLine.Text;
 using Microsoft.Win32;
 
 namespace ProPresenter_Local_Sync_Tool
 {
     internal class Program
     {
-        private static bool stringIsTrue(string val)
+        private static bool _quiet;
+        private static bool _syncReplace;
+        private static int _syncMode;
+
+        public static void Print(string str)
         {
-            return val == "true";
+            if (!_quiet) Console.WriteLine(str);
         }
 
-        private static void Main(string[] args)
+        private static void SynchroniseWithRemote(string remoteDir, string localDir)
         {
-            var parser = new ArgsParser();
+            Directory.CreateDirectory(remoteDir);
+            Directory.CreateDirectory(localDir);
+            var compare = Utils.CompareDirectory(remoteDir, localDir);
+            // Print("  NEW  " + string.Join(" | ", compare["new"]));
+            // Print("  MISSING  " + string.Join(" | ", compare["missing"]));
+            // Print("  CONFLICT  " + string.Join(" | ", compare["conflict"]));
+            if (_syncMode != 1)
+                foreach (var file in compare["new"])
+                {
+                    Print("  Receiving " + file);
 
-            void Print(string str)
-            {
-                if (!parser.Quiet) Console.WriteLine(str);
-            }
+                    Directory.CreateDirectory(Path.Combine(localDir, Path.GetDirectoryName(file)));
+                    File.Copy(Path.Combine(remoteDir, file), Path.Combine(localDir, file),
+                        _syncReplace);
+                }
+            if (_syncMode != -1)
+                foreach (var file in compare["missing"])
+                {
+                    Print("  Uploading " + file);
+
+                    Directory.CreateDirectory(Path.Combine(remoteDir, Path.GetDirectoryName(file)));
+                    File.Copy(Path.Combine(localDir, file), Path.Combine(remoteDir, file),
+                        _syncReplace);
+                }
+            if (_syncMode == 0)
+                foreach (var cfile in compare["conflict"])
+                {
+                    Print("  Conflict with " + cfile);
+                    var remoteNewer = cfile[0] == '_';
+                    var file = remoteNewer ? cfile.Substring(1) : cfile;
+                    Print("  " + (remoteNewer ? "Receiving" : "Uploading") + " " + file);
+                    File.Copy(Path.Combine(remoteNewer ? remoteDir : localDir, file),
+                        Path.Combine(remoteNewer ? localDir : remoteDir, file),
+                        _syncReplace);
+                }
+        }
+
+        private static void Main(string[] sysargs)
+        {
+            var args = new CommandLineArguments();
 
             var argsParser = new Parser(s =>
             {
@@ -31,27 +68,27 @@ namespace ProPresenter_Local_Sync_Tool
                 s.CaseSensitive = true;
                 s.IgnoreUnknownArguments = false;
             });
-            if (!argsParser.ParseArguments(args, parser))
+            if (!argsParser.ParseArguments(sysargs, args))
             {
-                Print(parser.GetUsage());
+                Console.WriteLine(args.GetUsage());
                 Environment.Exit(0);
             }
-
+            _quiet = args.Quiet;
             var registryKey = Registry.CurrentUser.OpenSubKey("SOFTWARE\\Renewed Vision\\ProPresenter 6");
             if (registryKey == null)
             {
-                Print("PP6 not installed");
-                Environment.Exit(0);
+                Print("FATAL: ProPresenter 6 not installed");
+                Environment.Exit(-1);
             }
             // Is ProPresenter 6 installed?
-
             var appDataType = registryKey.GetValue("AppDataType");
             var appDataLocation = "";
             switch (appDataType)
             {
                 case "OnlyThisUser":
                     // C:\Users\User\AppData\Roaming\RenewedVision\ProPresenter6\Preferences
-                    appDataLocation = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    appDataLocation = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                         "RenewedVision\\ProPresenter6");
                     break;
 
@@ -67,37 +104,57 @@ namespace ProPresenter_Local_Sync_Tool
                     break;
 
                 case null:
-                    Environment.Exit(-1);
+                    Print("FATAL: appDataType = " + appDataType);
+                    Environment.Exit(999);
                     // woah what, value doesn't exist?
                     break;
             }
+            Print("Application data found in " + appDataLocation);
 
             var syncPreferences = new XmlDocument();
-            syncPreferences.Load(Path.Combine(appDataLocation, "Preferences\\SyncPreferences.pro6pref"));
+            var generalPreferences = new XmlDocument();
+            try
+            {
+                syncPreferences.Load(Path.Combine(appDataLocation, "Preferences\\SyncPreferences.pro6pref"));
+                generalPreferences.Load(Path.Combine(appDataLocation, "Preferences\\GeneralPreferences.pro6pref"));
+            }
+            catch (FileNotFoundException)
+            {
+                Print(
+                    "FATAL: Files are missing are inaccessible. Please open ProPresenter 6 and save settings at least once");
+                Environment.Exit(-1);
+            }
             // CATCH System.IO.FileNotFoundException CATCH System.Xml.XmlException
 
             // ReSharper disable PossibleNullReferenceException
-            var syncLibrary = parser.SyncLibrary || parser.SyncLibraryNo
-                ? parser.SyncLibrary
-                : stringIsTrue(syncPreferences["RVPreferencesSynchronization"]["SyncLibrary"].InnerText);
-            var syncPlaylist = parser.SyncPlaylist || parser.SyncPlaylistNo
-                ? parser.SyncPlaylist
-                : stringIsTrue(syncPreferences["RVPreferencesSynchronization"]["SyncPlaylists"].InnerText);
-            var syncTemplate = parser.SyncTemplate || parser.SyncTemplateNo
-                ? parser.SyncTemplate
-                : stringIsTrue(syncPreferences["RVPreferencesSynchronization"]["SyncTemplates"].InnerText);
-            var syncMedia = parser.SyncMedia || parser.SyncMediaNo
-                ? parser.SyncMedia
-                : stringIsTrue(syncPreferences["RVPreferencesSynchronization"]["SyncMedia"].InnerText);
-            var syncReplace = parser.SyncReplace || parser.SyncReplaceNo
-                ? parser.SyncReplace
-                : stringIsTrue(syncPreferences["RVPreferencesSynchronization"]["ReplaceFiles"].InnerText);
-            var syncMode = parser.SyncDown || parser.SyncUp || parser.SyncBoth
+            var dirSource = args.SyncSource ?? syncPreferences["RVPreferencesSynchronization"]["Source"].InnerText;
+            if (dirSource.Length == 0)
+            {
+                Print("Error: Sync source not specified");
+                Environment.Exit(-2);
+            }
+
+            var syncLibrary = args.SyncLibrary || args.SyncLibraryNo
+                ? args.SyncLibrary
+                : Utils.StringIsTrue(syncPreferences["RVPreferencesSynchronization"]["SyncLibrary"].InnerText);
+            var syncPlaylist = args.SyncPlaylist || args.SyncPlaylistNo
+                ? args.SyncPlaylist
+                : Utils.StringIsTrue(syncPreferences["RVPreferencesSynchronization"]["SyncPlaylists"].InnerText);
+            var syncTemplate = args.SyncTemplate || args.SyncTemplateNo
+                ? args.SyncTemplate
+                : Utils.StringIsTrue(syncPreferences["RVPreferencesSynchronization"]["SyncTemplates"].InnerText);
+            var syncMedia = args.SyncMedia || args.SyncMediaNo
+                ? args.SyncMedia
+                : Utils.StringIsTrue(syncPreferences["RVPreferencesSynchronization"]["SyncMedia"].InnerText);
+            _syncReplace = args.SyncReplace || args.SyncReplaceNo
+                ? args.SyncReplace
+                : Utils.StringIsTrue(syncPreferences["RVPreferencesSynchronization"]["ReplaceFiles"].InnerText);
+            _syncMode = args.SyncDown || args.SyncUp || args.SyncBoth
                 ? new List<bool>
                 {
-                    parser.SyncDown,
-                    parser.SyncBoth,
-                    parser.SyncUp
+                    args.SyncDown,
+                    args.SyncBoth,
+                    args.SyncUp
                 }.IndexOf(true) - 1
                 : new List<string>
                 {
@@ -106,115 +163,66 @@ namespace ProPresenter_Local_Sync_Tool
                     "UpdateServer"
                 }.IndexOf(
                     syncPreferences["RVPreferencesSynchronization"]["SyncMode"].InnerText) - 1;
-            var dirSource = parser.SyncSource ?? syncPreferences["RVPreferencesSynchronization"]["Source"].InnerText;
-            if (dirSource.Length == 0)
+            Print("Sync Mode: " + new List<string> { "Down", "Both", "Up" }[_syncMode + 1]);
+            Print("Sync Replace: " + (_syncReplace ? "Yes" : "No"));
+            Print("Library: " + (syncLibrary ? "Yes" : "No"));
+            Print("Playlist: " + (syncPlaylist ? "Yes" : "No"));
+            Print("Templates: " + (syncTemplate ? "Yes" : "No"));
+            Print("Media: " + (syncMedia ? "Yes" : "No"));
+
+            var remoteLibrary = Path.Combine(dirSource, "__Documents\\Default");
+            var remoteTemplate = Path.Combine(dirSource, "__Templates");
+            var remoteMedia = Path.Combine(dirSource, "__Media");
+
+            var localLibrary = generalPreferences["RVPreferencesGeneral"]["SelectedLibraryFolder"]["Location"]
+                .InnerText;
+            var localTemplate = Path.Combine(appDataLocation, "Templates");
+            var localMedia = generalPreferences["RVPreferencesGeneral"]["MediaRepositoryPath"].InnerText;
+            // ReSharper enable PossibleNullReferenceException
+
+            if (syncLibrary)
             {
-                Print("Empty source");
-                Environment.Exit(-2);
+                Print(Environment.NewLine + "Syncing library");
+                SynchroniseWithRemote(remoteLibrary, localLibrary);
             }
 
-            var generalPreferences = new XmlDocument();
-            generalPreferences.Load(Path.Combine(appDataLocation, "Preferences\\GeneralPreferences.pro6pref"));
-            var dirLibrary = generalPreferences["RVPreferencesGeneral"]["SelectedLibraryFolder"]["Location"].InnerText;
-            var dirMedia = generalPreferences["RVPreferencesGeneral"]["MediaRepositoryPath"].InnerText;
+            if (syncTemplate)
+            {
+                Print(Environment.NewLine + "Syncing templates");
+                SynchroniseWithRemote(remoteTemplate, localTemplate);
+            }
 
-            // Sync Media
-            // server - Path.Combine(dirSource, "__Media");
-            // __User_Data?
-            // client - dirMedia;
+            if (syncMedia)
+            {
+                Print(Environment.NewLine + "Syncing media");
+                SynchroniseWithRemote(remoteMedia, localMedia);
+            }
 
-            // Sync Playlist
-            // server - Path.Combine(dirSource, "__Playlist_Data");
-            // client - Path.Combine(appDataLocation, "PlaylistData");
-            var ServerPlaylist = new XmlDocument();
-            ServerPlaylist.PreserveWhitespace = true;
-            ServerPlaylist.Load(Path.Combine(dirSource, "__Playlist_Data\\Default.pro6pl"));
-            foreach (XmlNode item in ServerPlaylist.GetElementsByTagName("RVDocumentCue"))
-                item.Attributes["filePath"].Value = Uri.EscapeDataString(dirLibrary) + item.Attributes["filePath"].Value
-                                                        .Split(new[] { "%5C" }, StringSplitOptions.None).Reverse()
-                                                        .ToArray()[0];
-            ServerPlaylist.Save(Path.Combine(appDataLocation, "PlaylistData\\Default.pro6pl"));
-            // '\' already included
-
-            // Sync Documents
-            // server - Path.Combine(dirSource, "__Documents");
-            // client - dirLibrary
-
-            // Sync Templates
-            // server - Path.Combine(dirSource, "__Templates");
-            // client - Path.Combine(appDataLocation, "Templates");
-
-            /*
-             * __Documents
-             * __Playlist_Data --> Default.pro6pl :RVDocumentCue D%3A%5CUsers%5CAndrew%5CDocuments%5CProPresenter6%5C
-             * __Templates
-             * __User_Data
-             */
-
-            // ReSharper restore PossibleNullReferenceException
-
+            if (syncPlaylist)
+            {
+                Print(Environment.NewLine + "Syncing playlist");
+                if (_syncMode == -1)
+                {
+                    Print("Cannot upload local playlist to server (yet.)");
+                }
+                else
+                {
+                    var playlist = new XmlDocument();
+                    playlist.PreserveWhitespace = true;
+                    playlist.Load(Path.Combine(dirSource, "__Playlist_Data\\Default.pro6pl"));
+                    foreach (XmlNode item in playlist.GetElementsByTagName("RVDocumentCue"))
+                        item.Attributes["filePath"].Value =
+                            Uri.EscapeDataString(localLibrary) + item.Attributes["filePath"].Value
+                                .Split(new[] { "%5C" }, StringSplitOptions.None).Reverse()
+                                .ToArray()[0];
+                    playlist.Save(Path.Combine(appDataLocation, "PlaylistData\\Default.pro6pl"));
+                }
+            }
             /*
              *
              * LabelsPreferences.pro6pref
              */
-        }
-
-        private class ArgsParser
-        {
-            [Option('d', "down", HelpText = "Download files to the repository", MutuallyExclusiveSet = "syncMode")]
-            public bool SyncDown { get; set; }
-
-            [Option('b', "both", HelpText = "Synchronise files to and from the repository",
-                MutuallyExclusiveSet = "syncMode")]
-            public bool SyncBoth { get; set; }
-
-            [Option('u', "up", HelpText = "Upload files to the repository", MutuallyExclusiveSet = "syncMode")]
-            public bool SyncUp { get; set; }
-
-            [Option('m', "media", HelpText = "Sync media", MutuallyExclusiveSet = "syncMedia")]
-            public bool SyncMedia { get; set; }
-
-            [Option('M', "no-media", HelpText = "Do not sync media", MutuallyExclusiveSet = "syncMedia")]
-            public bool SyncMediaNo { get; set; }
-
-            [Option('l', "library", HelpText = "Sync library", MutuallyExclusiveSet = "syncLibrary")]
-            public bool SyncLibrary { get; set; }
-
-            [Option('L', "no-library", HelpText = "Do not sync library", MutuallyExclusiveSet = "syncLibrary")]
-            public bool SyncLibraryNo { get; set; }
-
-            [Option('t', "template", HelpText = "Sync templates", MutuallyExclusiveSet = "syncTemplate")]
-            public bool SyncTemplate { get; set; }
-
-            [Option('T', "no-template", HelpText = "Do not sync templates", MutuallyExclusiveSet = "syncTemplate")]
-            public bool SyncTemplateNo { get; set; }
-
-            [Option('p', "playlist", HelpText = "Sync playlists", MutuallyExclusiveSet = "syncPlaylist")]
-            public bool SyncPlaylist { get; set; }
-
-            [Option('P', "no-playlist", HelpText = "Do not sync playlists", MutuallyExclusiveSet = "syncPlaylist")]
-            public bool SyncPlaylistNo { get; set; }
-
-            [Option('r', "replace", HelpText = "Replace files", MutuallyExclusiveSet = "syncReplace")]
-            public bool SyncReplace { get; set; }
-
-            [Option('R', "no-replace", HelpText = "Do not replace files", MutuallyExclusiveSet = "syncReplace")]
-            public bool SyncReplaceNo { get; set; }
-
-            [Option('s', "source",
-                HelpText = "ProPresenter local sync source")]
-            public string SyncSource { get; set; }
-
-            [Option('q', "quiet",
-                HelpText = "Suppresses output messages")]
-            public bool Quiet { get; set; }
-
-            [HelpOption('h', "help")]
-            public string GetUsage()
-            {
-                return HelpText.AutoBuild(this,
-                    current => HelpText.DefaultParsingErrorsHandler(this, current));
-            }
+            Print(Environment.NewLine + Environment.NewLine + "Sync complete!" + Environment.NewLine + "Quitting...");
         }
     }
 }
