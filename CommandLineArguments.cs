@@ -5,14 +5,14 @@ namespace ProPresenter_Local_Sync_Tool
 {
     internal class CommandLineArguments
     {
-        [Option('d', "down", HelpText = "Download files to the repository", MutuallyExclusiveSet = "syncMode")]
+        [Option('d', "down", HelpText = "Download files from the sync source", MutuallyExclusiveSet = "syncMode")]
         public bool SyncDown { get; set; }
 
-        [Option('b', "both", HelpText = "Synchronise files to and from the repository",
+        [Option('b', "both", HelpText = "Synchronise files to and from the sync source",
             MutuallyExclusiveSet = "syncMode")]
         public bool SyncBoth { get; set; }
 
-        [Option('u', "up", HelpText = "Upload files to the repository", MutuallyExclusiveSet = "syncMode")]
+        [Option('u', "up", HelpText = "Upload files to the sync source", MutuallyExclusiveSet = "syncMode")]
         public bool SyncUp { get; set; }
 
         [Option('m', "media", HelpText = "Sync media", MutuallyExclusiveSet = "syncMedia")]
