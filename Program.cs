@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Xml;
 using CommandLine;
 using Microsoft.Win32;
@@ -24,9 +26,6 @@ namespace ProPresenter_Local_Sync_Tool
             Directory.CreateDirectory(remoteDir);
             Directory.CreateDirectory(localDir);
             var compare = Utils.CompareDirectory(remoteDir, localDir);
-            // Print("  NEW  " + string.Join(" | ", compare["new"]));
-            // Print("  MISSING  " + string.Join(" | ", compare["missing"]));
-            // Print("  CONFLICT  " + string.Join(" | ", compare["conflict"]));
             if (_syncMode != 1)
                 foreach (var file in compare["new"])
                 {
@@ -72,7 +71,12 @@ namespace ProPresenter_Local_Sync_Tool
                 Console.WriteLine(args.GetUsage());
                 Environment.Exit(0);
             }
+
             _quiet = args.Quiet;
+
+            var versionInfo = FileVersionInfo.GetVersionInfo(Assembly.GetEntryAssembly().Location);
+            Print(versionInfo.ProductName + " v" + versionInfo.ProductVersion + Environment.NewLine +
+                  versionInfo.LegalCopyright + Environment.NewLine);
             var registryKey = Registry.CurrentUser.OpenSubKey("SOFTWARE\\Renewed Vision\\ProPresenter 6");
             if (registryKey == null)
             {
@@ -108,7 +112,7 @@ namespace ProPresenter_Local_Sync_Tool
                     // woah what, value doesn't exist?
                     break;
             }
-            Print("Application data found in " + appDataLocation);
+            Print("Application data found in " + appDataLocation + Environment.NewLine);
 
             var syncPreferences = new XmlDocument();
             var generalPreferences = new XmlDocument();
@@ -227,7 +231,7 @@ namespace ProPresenter_Local_Sync_Tool
              *
              * LabelsPreferences.pro6pref
              */
-            Print(Environment.NewLine + Environment.NewLine + "Sync complete!" + Environment.NewLine + "Quitting...");
+            Print(Environment.NewLine + "Sync complete!" + Environment.NewLine + "Quitting...");
         }
     }
 }
