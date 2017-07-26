@@ -2,41 +2,12 @@
 using System.Collections.Generic;
 using System.IO;
 
-namespace ProPresenter_Local_Sync_Tool
+namespace ProPresenterLocalSyncTool
 {
     internal class Utils
     {
         private const int BYTES_TO_READ = sizeof(long);
 
-        public static bool StringIsTrue(string val)
-        {
-            return val == "true";
-        }
-
-        private static List<string> _CompareDirectory(string remoteDir, string localDir, List<string> ignore,
-            List<string> conflict)
-        {
-            var result = new List<string>();
-            foreach (var remotePath in Directory.GetFiles(remoteDir, "*.*",
-                SearchOption.AllDirectories))
-            {
-                var relativepath = remotePath.Replace(remoteDir, "");
-                var localPath = Path.Combine(localDir, relativepath);
-                if (!ignore.Contains(relativepath))
-                {
-                    if (!File.Exists(localPath)) result.Add(relativepath);
-                    // File exists only in first path
-                    else if (FileDiff(remotePath, localPath))
-                        conflict.Add((new FileInfo(remotePath).LastWriteTime > new FileInfo(localPath).LastWriteTime
-                                         ? "_"
-                                         : "") + relativepath);
-                    ignore.Add(relativepath);
-                }
-            }
-            return result;
-        }
-
-        // public static Tuple<List<string>, List<string>, List<string>> CompareDirectory(string remoteDir, string localDir,
         public static Dictionary<string, List<string>> CompareDirectory(string remoteDir, string localDir,
             bool recursive = true)
         {
@@ -71,7 +42,7 @@ namespace ProPresenter_Local_Sync_Tool
             if (first.FullName == second.FullName)
                 return false;
 
-            var iterations = (int)Math.Ceiling((double)first.Length / BYTES_TO_READ);
+            var iterations = (int) Math.Ceiling((double) first.Length / BYTES_TO_READ);
 
             using (var fs1 = first.OpenRead())
             using (var fs2 = second.OpenRead())
@@ -90,6 +61,34 @@ namespace ProPresenter_Local_Sync_Tool
             }
 
             return false;
+        }
+
+        public static bool StringIsTrue(string val)
+        {
+            return val == "true";
+        }
+
+        private static List<string> _CompareDirectory(string remoteDir, string localDir, List<string> ignore,
+            List<string> conflict)
+        {
+            var result = new List<string>();
+            foreach (var remotePath in Directory.GetFiles(remoteDir, "*.*",
+                SearchOption.AllDirectories))
+            {
+                var relativepath = remotePath.Replace(remoteDir, "");
+                var localPath = Path.Combine(localDir, relativepath);
+                if (!ignore.Contains(relativepath))
+                {
+                    if (!File.Exists(localPath)) result.Add(relativepath);
+                    // File exists only in first path
+                    else if (FileDiff(remotePath, localPath))
+                        conflict.Add((new FileInfo(remotePath).LastWriteTime > new FileInfo(localPath).LastWriteTime
+                                         ? "_"
+                                         : "") + relativepath);
+                    ignore.Add(relativepath);
+                }
+            }
+            return result;
         }
     }
 }

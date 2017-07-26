@@ -1,7 +1,7 @@
 ﻿using CommandLine;
 using CommandLine.Text;
 
-namespace ProPresenter_Local_Sync_Tool
+namespace ProPresenterLocalSyncTool
 {
     internal class CommandLineArguments
     {

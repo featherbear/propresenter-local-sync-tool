@@ -3,63 +3,31 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Management;
 using System.Reflection;
 using System.Xml;
 using CommandLine;
 using Microsoft.Win32;
 
-namespace ProPresenter_Local_Sync_Tool
+namespace ProPresenterLocalSyncTool
 {
     internal class Program
     {
         private static bool _quiet;
-        private static bool _syncReplace;
         private static int _syncMode;
+        private static bool _syncReplace;
 
         public static void Print(string str)
         {
             if (!_quiet) Console.WriteLine(str);
         }
 
-        private static void SynchroniseWithRemote(string remoteDir, string localDir)
-        {
-            Directory.CreateDirectory(remoteDir);
-            Directory.CreateDirectory(localDir);
-            var compare = Utils.CompareDirectory(remoteDir, localDir);
-            if (_syncMode != 1)
-                foreach (var file in compare["new"])
-                {
-                    Print("  Receiving " + file);
-
-                    Directory.CreateDirectory(Path.Combine(localDir, Path.GetDirectoryName(file)));
-                    File.Copy(Path.Combine(remoteDir, file), Path.Combine(localDir, file),
-                        _syncReplace);
-                }
-            if (_syncMode != -1)
-                foreach (var file in compare["missing"])
-                {
-                    Print("  Uploading " + file);
-
-                    Directory.CreateDirectory(Path.Combine(remoteDir, Path.GetDirectoryName(file)));
-                    File.Copy(Path.Combine(localDir, file), Path.Combine(remoteDir, file),
-                        _syncReplace);
-                }
-            if (_syncMode == 0)
-                foreach (var cfile in compare["conflict"])
-                {
-                    var remoteNewer = cfile[0] == '_';
-                    var file = remoteNewer ? cfile.Substring(1) : cfile;
-                    Print("  " + (remoteNewer ? "Receiving" : "Uploading") + " " + file);
-                    File.Copy(Path.Combine(remoteNewer ? remoteDir : localDir, file),
-                        Path.Combine(remoteNewer ? localDir : remoteDir, file),
-                        true);
-                }
-        }
-
         private static void Main(string[] sysargs)
         {
-            var args = new CommandLineArguments();
+            var versionInfo = FileVersionInfo.GetVersionInfo(Assembly.GetEntryAssembly().Location);
+            Console.Title = versionInfo.ProductName;
 
+            var args = new CommandLineArguments();
             var argsParser = new Parser(s =>
             {
                 s.MutuallyExclusive = true;
@@ -74,7 +42,6 @@ namespace ProPresenter_Local_Sync_Tool
 
             _quiet = args.Quiet;
 
-            var versionInfo = FileVersionInfo.GetVersionInfo(Assembly.GetEntryAssembly().Location);
             Print(versionInfo.ProductName + " v" + versionInfo.ProductVersion + Environment.NewLine +
                   versionInfo.LegalCopyright + Environment.NewLine);
             var registryKey = Registry.CurrentUser.OpenSubKey("SOFTWARE\\Renewed Vision\\ProPresenter 6");
@@ -112,7 +79,8 @@ namespace ProPresenter_Local_Sync_Tool
                     // woah what, value doesn't exist?
                     break;
             }
-            Print("Application data found in " + appDataLocation + Environment.NewLine);
+
+            // Print("Application data found in " + appDataLocation + Environment.NewLine);
 
             var syncPreferences = new XmlDocument();
             var generalPreferences = new XmlDocument();
@@ -211,8 +179,7 @@ namespace ProPresenter_Local_Sync_Tool
                 }
                 else
                 {
-                    var playlist = new XmlDocument();
-                    playlist.PreserveWhitespace = true;
+                    var playlist = new XmlDocument { PreserveWhitespace = true };
                     var remotePlaylist = Path.Combine(dirSource, "__Playlist_Data");
                     Directory.CreateDirectory(remotePlaylist);
                     foreach (var file in Directory.GetFiles(remotePlaylist, "*.pro6pl"))
@@ -228,10 +195,53 @@ namespace ProPresenter_Local_Sync_Tool
                 }
             }
             /*
-             *
              * LabelsPreferences.pro6pref
              */
-            Print(Environment.NewLine + "Sync complete!" + Environment.NewLine + "Quitting...");
+            Print(Environment.NewLine + "Sync complete!");
+            var query = string.Format("SELECT ParentProcessId FROM Win32_Process WHERE ProcessId = " +
+                                      Process.GetCurrentProcess().Id);
+            var results = new ManagementObjectSearcher("root\\CIMV2", query).Get().GetEnumerator();
+            results.MoveNext();
+            if (Process.GetProcessById((int)(uint)results.Current["ParentProcessId"]).ProcessName == "explorer")
+            {
+                Console.WriteLine("Press a key to exit");
+                Console.ReadKey(true);
+            }
+        }
+
+        private static void SynchroniseWithRemote(string remoteDir, string localDir)
+        {
+            Directory.CreateDirectory(remoteDir);
+            Directory.CreateDirectory(localDir);
+            var compare = Utils.CompareDirectory(remoteDir, localDir);
+            if (_syncMode != 1)
+                foreach (var file in compare["new"])
+                {
+                    Print("  Receiving " + file);
+
+                    Directory.CreateDirectory(Path.Combine(localDir, Path.GetDirectoryName(file)));
+                    File.Copy(Path.Combine(remoteDir, file), Path.Combine(localDir, file),
+                        _syncReplace);
+                }
+            if (_syncMode != -1)
+                foreach (var file in compare["missing"])
+                {
+                    Print("  Uploading " + file);
+
+                    Directory.CreateDirectory(Path.Combine(remoteDir, Path.GetDirectoryName(file)));
+                    File.Copy(Path.Combine(localDir, file), Path.Combine(remoteDir, file),
+                        _syncReplace);
+                }
+            if (_syncMode == 0)
+                foreach (var cfile in compare["conflict"])
+                {
+                    var remoteNewer = cfile[0] == '_';
+                    var file = remoteNewer ? cfile.Substring(1) : cfile;
+                    Print("  " + (remoteNewer ? "Receiving" : "Uploading") + " " + file);
+                    File.Copy(Path.Combine(remoteNewer ? remoteDir : localDir, file),
+                        Path.Combine(remoteNewer ? localDir : remoteDir, file),
+                        true);
+                }
         }
     }
 }
