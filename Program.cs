@@ -145,11 +145,14 @@ namespace ProPresenterLocalSyncTool
             var remoteLibrary = Path.Combine(dirSource, "__Documents\\Default");
             var remoteTemplate = Path.Combine(dirSource, "__Templates");
             var remoteMedia = Path.Combine(dirSource, "__Media");
+            var remotePlaylist = Path.Combine(dirSource, "__Playlist_Data");
 
             var localLibrary = generalPreferences["RVPreferencesGeneral"]["SelectedLibraryFolder"]["Location"]
                 .InnerText;
             var localTemplate = Path.Combine(appDataLocation, "Templates");
             var localMedia = generalPreferences["RVPreferencesGeneral"]["MediaRepositoryPath"].InnerText;
+            var localPlaylist = Path.Combine(appDataLocation, "PlaylistData");
+
             // ReSharper enable PossibleNullReferenceException
 
             if (syncLibrary)
@@ -173,26 +176,35 @@ namespace ProPresenterLocalSyncTool
             if (syncPlaylist)
             {
                 Print(Environment.NewLine + "Syncing playlist");
-                if (_syncMode == -1)
-                {
-                    Print("Cannot upload local playlist to server (yet.)");
-                }
-                else
-                {
-                    var playlist = new XmlDocument { PreserveWhitespace = true };
-                    var remotePlaylist = Path.Combine(dirSource, "__Playlist_Data");
-                    Directory.CreateDirectory(remotePlaylist);
-                    foreach (var file in Directory.GetFiles(remotePlaylist, "*.pro6pl"))
+
+                var compare = Utils.CompareDirectory(remotePlaylist, localPlaylist);
+                Directory.CreateDirectory(remotePlaylist);
+
+                if (_syncMode != 1)
+
+                    foreach (var sourceFile in compare["new"]
+                        .Concat(compare["conflict"].Where(f => f[0] == '_').Select(s => s.Substring(1))))
                     {
-                        playlist.Load(file);
+                        Print("  Receiving " + sourceFile);
+
+                        var playlist = new XmlDocument { PreserveWhitespace = true };
+                        var targetFile = Path.Combine(localPlaylist, sourceFile);
+                        playlist.Load(Path.Combine(remotePlaylist, sourceFile));
                         foreach (XmlNode item in playlist.GetElementsByTagName("RVDocumentCue"))
-                            item.Attributes["filePath"].Value =
-                                Uri.EscapeDataString(localLibrary) + item.Attributes["filePath"].Value
-                                    .Split(new[] { "%5C" }, StringSplitOptions.None).Reverse()
-                                    .ToArray()[0];
-                        playlist.Save(Path.Combine(appDataLocation, "PlaylistData", Path.GetFileName(file)));
+                            item.Attributes["filePath"].Value = Uri.EscapeDataString(localLibrary) +
+                                                                item.Attributes["filePath"].Value.Split(new[] { "%5C" },
+                                                                        StringSplitOptions.None)
+                                                                    .Reverse().ToArray()[0];
+                        playlist.Save(targetFile);
                     }
-                }
+
+                if (_syncMode != -1)
+                    foreach (var file in compare["missing"].Concat(compare["conflict"].Where(f => f[0] != '_')))
+                    {
+                        Print("  Uploading " + file);
+                        File.Copy(Path.Combine(localPlaylist, file), Path.Combine(remotePlaylist, file),
+                            _syncReplace);
+                    }
             }
             /*
              * LabelsPreferences.pro6pref
