@@ -53,10 +53,9 @@ ppsync.exe [options]
 
 ### Current Bugs / Issues
 * Only supports _Default_ library
-* Does not sync playlists upwards
 
 ## License
-Copyright © 2017 Andrew Wong  
+Copyright Â© 2017 Andrew Wong  
 ProPresenter is a registered trademark of Renewed Vision LLC.  
 All rights reserved.  
 
