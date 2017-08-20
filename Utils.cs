@@ -9,7 +9,7 @@ namespace ProPresenterLocalSyncTool
         private const int BYTES_TO_READ = sizeof(long);
 
         public static Dictionary<string, List<string>> CompareDirectory(string remoteDir, string localDir,
-            bool recursive = true)
+            bool recursive = true, bool cheatymethod = false)
         {
             if (!remoteDir.EndsWith("\\")) remoteDir += "\\";
             if (!localDir.EndsWith("\\")) localDir += "\\";
@@ -17,8 +17,8 @@ namespace ProPresenterLocalSyncTool
             var ignore = new List<string>();
             var conflicts = new List<string>();
 
-            var inRemote = _CompareDirectory(remoteDir, localDir, ignore, conflicts);
-            var inLocal = _CompareDirectory(localDir, remoteDir, ignore, conflicts);
+            var inRemote = _CompareDirectory(remoteDir, localDir, ignore, conflicts, cheatymethod);
+            var inLocal = _CompareDirectory(localDir, remoteDir, ignore, conflicts, cheatymethod);
 
             return new Dictionary<string, List<string>>
             {
@@ -28,13 +28,15 @@ namespace ProPresenterLocalSyncTool
             };
         }
 
-        public static bool FileDiff(string first, string second)
+        public static bool FileDiff(string first, string second, bool cheatymethod = false)
         {
             return FileDiff(new FileInfo(first), new FileInfo(second));
         }
 
-        public static bool FileDiff(FileInfo first, FileInfo second)
+        public static bool FileDiff(FileInfo first, FileInfo second, bool cheatymethod = false)
         {
+            if (cheatymethod) return first.LastWriteTime != second.LastWriteTime;
+
             // https://stackoverflow.com/a/1359947
             if (first.Length != second.Length || first.LastWriteTime != second.LastWriteTime)
                 return true;
@@ -42,7 +44,7 @@ namespace ProPresenterLocalSyncTool
             if (first.FullName == second.FullName)
                 return false;
 
-            var iterations = (int) Math.Ceiling((double) first.Length / BYTES_TO_READ);
+            var iterations = (int)Math.Ceiling((double)first.Length / BYTES_TO_READ);
 
             using (var fs1 = first.OpenRead())
             using (var fs2 = second.OpenRead())
@@ -69,7 +71,7 @@ namespace ProPresenterLocalSyncTool
         }
 
         private static List<string> _CompareDirectory(string remoteDir, string localDir, List<string> ignore,
-            List<string> conflict)
+            List<string> conflict, bool cheatymethod = false)
         {
             var result = new List<string>();
             foreach (var remotePath in Directory.GetFiles(remoteDir, "*.*",
@@ -81,7 +83,7 @@ namespace ProPresenterLocalSyncTool
                 {
                     if (!File.Exists(localPath)) result.Add(relativepath);
                     // File exists only in first path
-                    else if (FileDiff(remotePath, localPath))
+                    else if (FileDiff(remotePath, localPath, cheatymethod))
                         conflict.Add((new FileInfo(remotePath).LastWriteTime > new FileInfo(localPath).LastWriteTime
                                          ? "_"
                                          : "") + relativepath);
@@ -89,6 +91,22 @@ namespace ProPresenterLocalSyncTool
                 }
             }
             return result;
+        }
+
+        public static void CopyClone(string src, string dest, bool replace = false)
+        {
+            Console.WriteLine(replace.ToString());
+            var existed = File.Exists(dest);
+            File.Copy(src, dest, replace);
+            if (!existed || replace)
+                MirrorTimestamps(src, dest);
+        }
+
+        public static void MirrorTimestamps(string src, string dest)
+        {
+            File.SetCreationTime(dest, File.GetCreationTime(src));
+            File.SetLastWriteTime(dest, File.GetLastWriteTime(src));
+            File.SetLastAccessTime(dest, File.GetLastAccessTime(src));
         }
     }
 }

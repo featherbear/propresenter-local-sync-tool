@@ -177,38 +177,41 @@ namespace ProPresenterLocalSyncTool
             {
                 Print(Environment.NewLine + "Syncing playlist");
 
-                var compare = Utils.CompareDirectory(remotePlaylist, localPlaylist);
+                var compare = Utils.CompareDirectory(remotePlaylist, localPlaylist, false, true);
                 Directory.CreateDirectory(remotePlaylist);
 
                 if (_syncMode != 1)
 
-                    foreach (var sourceFile in compare["new"]
+                    foreach (var file in compare["new"]
                         .Concat(compare["conflict"].Where(f => f[0] == '_').Select(s => s.Substring(1))))
                     {
-                        Print("  Receiving " + sourceFile);
+                        Print("  Receiving " + file);
 
                         var playlist = new XmlDocument { PreserveWhitespace = true };
-                        var targetFile = Path.Combine(localPlaylist, sourceFile);
-                        playlist.Load(Path.Combine(remotePlaylist, sourceFile));
+                        var sourceFile = Path.Combine(remotePlaylist, file);
+                        var targetFile = Path.Combine(localPlaylist, file);
+                        playlist.Load(sourceFile);
                         foreach (XmlNode item in playlist.GetElementsByTagName("RVDocumentCue"))
                             item.Attributes["filePath"].Value = Uri.EscapeDataString(localLibrary) +
                                                                 item.Attributes["filePath"].Value.Split(new[] { "%5C" },
                                                                         StringSplitOptions.None)
                                                                     .Reverse().ToArray()[0];
                         playlist.Save(targetFile);
+                        Utils.MirrorTimestamps(sourceFile, targetFile);
                     }
 
                 if (_syncMode != -1)
                     foreach (var file in compare["missing"].Concat(compare["conflict"].Where(f => f[0] != '_')))
                     {
                         Print("  Uploading " + file);
-                        File.Copy(Path.Combine(localPlaylist, file), Path.Combine(remotePlaylist, file),
+                        Utils.CopyClone(Path.Combine(remotePlaylist, file), Path.Combine(localPlaylist, file),
                             _syncReplace);
                     }
             }
             /*
              * LabelsPreferences.pro6pref
              */
+
             Print(Environment.NewLine + "Sync complete!");
             var query = string.Format("SELECT ParentProcessId FROM Win32_Process WHERE ProcessId = " +
                                       Process.GetCurrentProcess().Id);
@@ -232,7 +235,7 @@ namespace ProPresenterLocalSyncTool
                     Print("  Receiving " + file);
 
                     Directory.CreateDirectory(Path.Combine(localDir, Path.GetDirectoryName(file)));
-                    File.Copy(Path.Combine(remoteDir, file), Path.Combine(localDir, file),
+                    Utils.CopyClone(Path.Combine(remoteDir, file), Path.Combine(localDir, file),
                         _syncReplace);
                 }
             if (_syncMode != -1)
@@ -241,7 +244,7 @@ namespace ProPresenterLocalSyncTool
                     Print("  Uploading " + file);
 
                     Directory.CreateDirectory(Path.Combine(remoteDir, Path.GetDirectoryName(file)));
-                    File.Copy(Path.Combine(localDir, file), Path.Combine(remoteDir, file),
+                    Utils.CopyClone(Path.Combine(localDir, file), Path.Combine(remoteDir, file),
                         _syncReplace);
                 }
             if (_syncMode == 0)
@@ -250,7 +253,7 @@ namespace ProPresenterLocalSyncTool
                     var remoteNewer = cfile[0] == '_';
                     var file = remoteNewer ? cfile.Substring(1) : cfile;
                     Print("  " + (remoteNewer ? "Receiving" : "Uploading") + " " + file);
-                    File.Copy(Path.Combine(remoteNewer ? remoteDir : localDir, file),
+                    Utils.CopyClone(Path.Combine(remoteNewer ? remoteDir : localDir, file),
                         Path.Combine(remoteNewer ? localDir : remoteDir, file),
                         true);
                 }
