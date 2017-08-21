@@ -4,7 +4,9 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Management;
+using System.Net;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using System.Xml;
 using CommandLine;
 using Microsoft.Win32;
@@ -25,6 +27,7 @@ namespace ProPresenterLocalSyncTool
         private static void Main(string[] sysargs)
         {
             var versionInfo = FileVersionInfo.GetVersionInfo(Assembly.GetEntryAssembly().Location);
+
             Console.Title = versionInfo.ProductName;
 
             var args = new CommandLineArguments();
@@ -41,6 +44,24 @@ namespace ProPresenterLocalSyncTool
             }
 
             _quiet = args.Quiet;
+            if (args.Update)
+                using (var webClient = new WebClient())
+                {
+                    Print("Application update requested");
+                    webClient.Headers.Add("user-agent", "ProPresenter Sync Tool");
+                    var json = webClient.DownloadString(
+                        "https://api.github.com/repos/bearbear12345/propresenter-local-sync-tool/releases/latest");
+                    if (new Version(versionInfo.ProductVersion).CompareTo(new Version(Regex
+                            .Match(json, "\"tag_name\":\"(.+?)\"").Groups[1].Value)) > 0)
+                    {
+                        var filePath = Process.GetCurrentProcess().MainModule.FileName;
+                        webClient.DownloadFile(Regex.Match(json, "\"browser_download_url\":\"(.+?)\"").Groups[1].Value,
+                            filePath + ".update");
+                        File.Move(filePath, filePath + ".old");
+                        File.Move(filePath + ".update", filePath);
+                    }
+                    Print("Application is up to date");
+                }
 
             Print(versionInfo.ProductName + " v" + versionInfo.ProductVersion + Environment.NewLine +
                   versionInfo.LegalCopyright + Environment.NewLine);
@@ -182,8 +203,7 @@ namespace ProPresenterLocalSyncTool
 
                 if (_syncMode != 1)
 
-                    foreach (var file in compare["new"]
-                        .Concat(compare["conflict"].Where(f => f[0] == '_').Select(s => s.Substring(1))))
+                    foreach (var file in compare["new"])
                     {
                         Print("  Receiving " + file);
 
@@ -201,12 +221,13 @@ namespace ProPresenterLocalSyncTool
                     }
 
                 if (_syncMode != -1)
-                    foreach (var file in compare["missing"].Concat(compare["conflict"].Where(f => f[0] != '_')))
+                    foreach (var file in compare["missing"])
                     {
                         Print("  Uploading " + file);
                         Utils.CopyClone(Path.Combine(remotePlaylist, file), Path.Combine(localPlaylist, file),
                             _syncReplace);
                     }
+                if (_syncMode == 0)
             }
             /*
              * LabelsPreferences.pro6pref

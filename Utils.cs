@@ -9,7 +9,7 @@ namespace ProPresenterLocalSyncTool
         private const int BYTES_TO_READ = sizeof(long);
 
         public static Dictionary<string, List<string>> CompareDirectory(string remoteDir, string localDir,
-            bool recursive = true, bool cheatymethod = false)
+            bool recursive = true, bool noConflictDirection = false)
         {
             if (!remoteDir.EndsWith("\\")) remoteDir += "\\";
             if (!localDir.EndsWith("\\")) localDir += "\\";
@@ -17,8 +17,8 @@ namespace ProPresenterLocalSyncTool
             var ignore = new List<string>();
             var conflicts = new List<string>();
 
-            var inRemote = _CompareDirectory(remoteDir, localDir, ignore, conflicts, cheatymethod);
-            var inLocal = _CompareDirectory(localDir, remoteDir, ignore, conflicts, cheatymethod);
+            var inRemote = _CompareDirectory(remoteDir, localDir, ignore, conflicts, noConflictDirection);
+            var inLocal = _CompareDirectory(localDir, remoteDir, ignore, conflicts, noConflictDirection);
 
             return new Dictionary<string, List<string>>
             {
@@ -28,15 +28,13 @@ namespace ProPresenterLocalSyncTool
             };
         }
 
-        public static bool FileDiff(string first, string second, bool cheatymethod = false)
+        public static bool FileDiff(string first, string second)
         {
             return FileDiff(new FileInfo(first), new FileInfo(second));
         }
 
-        public static bool FileDiff(FileInfo first, FileInfo second, bool cheatymethod = false)
+        public static bool FileDiff(FileInfo first, FileInfo second)
         {
-            if (cheatymethod) return first.LastWriteTime != second.LastWriteTime;
-
             // https://stackoverflow.com/a/1359947
             if (first.Length != second.Length || first.LastWriteTime != second.LastWriteTime)
                 return true;
@@ -71,7 +69,7 @@ namespace ProPresenterLocalSyncTool
         }
 
         private static List<string> _CompareDirectory(string remoteDir, string localDir, List<string> ignore,
-            List<string> conflict, bool cheatymethod = false)
+            List<string> conflict, bool noConflictDirection = false)
         {
             var result = new List<string>();
             foreach (var remotePath in Directory.GetFiles(remoteDir, "*.*",
@@ -83,10 +81,12 @@ namespace ProPresenterLocalSyncTool
                 {
                     if (!File.Exists(localPath)) result.Add(relativepath);
                     // File exists only in first path
-                    else if (FileDiff(remotePath, localPath, cheatymethod))
-                        conflict.Add((new FileInfo(remotePath).LastWriteTime > new FileInfo(localPath).LastWriteTime
-                                         ? "_"
-                                         : "") + relativepath);
+                    else if (FileDiff(remotePath, localPath))
+                        conflict.Add(noConflictDirection
+                            ? relativepath
+                            : (new FileInfo(remotePath).LastWriteTime > new FileInfo(localPath).LastWriteTime
+                                  ? "_"
+                                  : "") + relativepath);
                     ignore.Add(relativepath);
                 }
             }

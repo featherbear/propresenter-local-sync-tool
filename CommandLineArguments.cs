@@ -53,6 +53,9 @@ namespace ProPresenterLocalSyncTool
             HelpText = "Suppresses output messages")]
         public bool Quiet { get; set; }
 
+        [Option("update", HelpText = "Update application")]
+        public bool Update { get; set; }
+
         [HelpOption('h', "help")]
         public string GetUsage()
         {
