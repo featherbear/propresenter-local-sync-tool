@@ -27,9 +27,7 @@ namespace ProPresenterLocalSyncTool
         private static void Main(string[] sysargs)
         {
             var versionInfo = FileVersionInfo.GetVersionInfo(Assembly.GetEntryAssembly().Location);
-
             Console.Title = versionInfo.ProductName;
-
             var args = new CommandLineArguments();
             var argsParser = new Parser(s =>
             {
@@ -45,30 +43,42 @@ namespace ProPresenterLocalSyncTool
 
             _quiet = args.Quiet;
             if (args.Update)
-                using (var webClient = new WebClient())
+                try
                 {
-                    Print("Application update requested");
-                    webClient.Headers.Add("user-agent", "ProPresenter Sync Tool");
-                    var json = webClient.DownloadString(
-                        "https://api.github.com/repos/bearbear12345/propresenter-local-sync-tool/releases/latest");
-                    if (new Version(versionInfo.ProductVersion).CompareTo(new Version(Regex
-                            .Match(json, "\"tag_name\":\"(.+?)\"").Groups[1].Value)) > 0)
+                    using (var webClient = new WebClient())
                     {
-                        var filePath = Process.GetCurrentProcess().MainModule.FileName;
-                        webClient.DownloadFile(Regex.Match(json, "\"browser_download_url\":\"(.+?)\"").Groups[1].Value,
-                            filePath + ".update");
-                        File.Move(filePath, filePath + ".old");
-                        File.Move(filePath + ".update", filePath);
+                        Print("Application update requested");
+                        webClient.Headers.Add("user-agent", "ProPresenter Sync Tool");
+                        var json = webClient.DownloadString(
+                            "https://api.github.com/repos/bearbear12345/propresenter-local-sync-tool/releases/latest");
+                        var remoteVersion = Regex.Match(json, "\"tag_name\":\"(.+?)\"").Groups[1].Value;
+                        if (new Version(versionInfo.ProductVersion).CompareTo(new Version(remoteVersion)) > 0)
+                        {
+                            Print("New version (" + remoteVersion + ")... Retrieving");
+                            var filePath = Process.GetCurrentProcess().MainModule.FileName;
+                            webClient.DownloadFile(
+                                Regex.Match(json, "\"browser_download_url\":\"(.+?)\"").Groups[1].Value,
+                                filePath + ".update");
+                            var oldFilePath = filePath + ".old";
+                            if (File.Exists(oldFilePath)) File.Delete(oldFilePath);
+                            File.Move(filePath, filePath + ".old");
+                            File.Move(filePath + ".update", filePath);
+                        }
+                        Print("Application is up to date");
                     }
-                    Print("Application is up to date");
+                }
+                catch (WebException)
+                {
+                    Print("Update failed");
                 }
 
             Print(versionInfo.ProductName + " v" + versionInfo.ProductVersion + Environment.NewLine +
                   versionInfo.LegalCopyright + Environment.NewLine);
+
             var registryKey = Registry.CurrentUser.OpenSubKey("SOFTWARE\\Renewed Vision\\ProPresenter 6");
             if (registryKey == null)
             {
-                Print("FATAL: ProPresenter 6 not installed");
+                Print("FATAL: ProPresenter 6 not found on system");
                 Environment.Exit(-1);
             }
             // Is ProPresenter 6 installed?
@@ -95,13 +105,11 @@ namespace ProPresenterLocalSyncTool
                     break;
 
                 case null:
-                    Print("FATAL: appDataType = " + appDataType);
+                    Print("FATAL: appDataType");
                     Environment.Exit(999);
                     // woah what, value doesn't exist?
                     break;
             }
-
-            // Print("Application data found in " + appDataLocation + Environment.NewLine);
 
             var syncPreferences = new XmlDocument();
             var generalPreferences = new XmlDocument();
@@ -110,21 +118,21 @@ namespace ProPresenterLocalSyncTool
                 syncPreferences.Load(Path.Combine(appDataLocation, "Preferences\\SyncPreferences.pro6pref"));
                 generalPreferences.Load(Path.Combine(appDataLocation, "Preferences\\GeneralPreferences.pro6pref"));
             }
-            catch (FileNotFoundException)
+            catch (IOException)
             {
-                Print(
-                    "FATAL: Files are missing are inaccessible. Please open ProPresenter 6 and save settings at least once");
+                Print("FATAL: Files are inaccessible. Please open ProPresenter 6 and save settings at least once");
                 Environment.Exit(-1);
             }
             // CATCH System.IO.FileNotFoundException CATCH System.Xml.XmlException
 
             // ReSharper disable PossibleNullReferenceException
             var dirSource = args.SyncSource ?? syncPreferences["RVPreferencesSynchronization"]["Source"].InnerText;
-            if (dirSource.Length == 0)
+            if (dirSource.Length == 0 || !Directory.Exists(dirSource))
             {
-                Print("Error: Sync source not specified");
+                Print("Error: Sync source not accessible");
                 Environment.Exit(-2);
             }
+
             if (!dirSource.EndsWith("\\")) dirSource += "\\";
 
             var syncLibrary = args.SyncLibrary || args.SyncLibraryNo
@@ -156,7 +164,12 @@ namespace ProPresenterLocalSyncTool
                     "UpdateServer"
                 }.IndexOf(
                     syncPreferences["RVPreferencesSynchronization"]["SyncMode"].InnerText) - 1;
-            Print("Sync Mode: " + new List<string> { "Down", "Both", "Up" }[_syncMode + 1]);
+            Print("Sync Mode: " + new List<string>
+            {
+                "Down",
+                "Both",
+                "Up"
+            }[_syncMode + 1]);
             if (_syncMode != 0) Print("Sync Replace: " + (_syncReplace ? "Yes" : "No"));
             Print("Library: " + (syncLibrary ? "Yes" : "No"));
             Print("Playlist: " + (syncPlaylist ? "Yes" : "No"));
@@ -200,22 +213,22 @@ namespace ProPresenterLocalSyncTool
 
                 var compare = Utils.CompareDirectory(remotePlaylist, localPlaylist, false, true);
                 Directory.CreateDirectory(remotePlaylist);
-
                 if (_syncMode != 1)
-
                     foreach (var file in compare["new"])
                     {
                         Print("  Receiving " + file);
 
-                        var playlist = new XmlDocument { PreserveWhitespace = true };
+                        var playlist = new XmlDocument
+                        {
+                            PreserveWhitespace = true
+                        };
                         var sourceFile = Path.Combine(remotePlaylist, file);
                         var targetFile = Path.Combine(localPlaylist, file);
                         playlist.Load(sourceFile);
                         foreach (XmlNode item in playlist.GetElementsByTagName("RVDocumentCue"))
-                            item.Attributes["filePath"].Value = Uri.EscapeDataString(localLibrary) +
-                                                                item.Attributes["filePath"].Value.Split(new[] { "%5C" },
-                                                                        StringSplitOptions.None)
-                                                                    .Reverse().ToArray()[0];
+                            item.Attributes["filePath"].Value =
+                                Uri.EscapeDataString(localLibrary) + item.Attributes["filePath"].Value
+                                    .Split(new[] { "%5C" }, StringSplitOptions.None).Reverse().ToArray()[0];
                         playlist.Save(targetFile);
                         Utils.MirrorTimestamps(sourceFile, targetFile);
                     }
@@ -224,14 +237,16 @@ namespace ProPresenterLocalSyncTool
                     foreach (var file in compare["missing"])
                     {
                         Print("  Uploading " + file);
-                        Utils.CopyClone(Path.Combine(remotePlaylist, file), Path.Combine(localPlaylist, file),
+                        Utils.CopyClone(Path.Combine(localPlaylist, file), Path.Combine(remotePlaylist, file),
                             _syncReplace);
                     }
                 if (_syncMode == 0)
                     foreach (var file in compare["conflict"])
                     {
-                        var one = new XmlDocument { PreserveWhitespace = true };
-                        var two = new XmlDocument { PreserveWhitespace = true };
+                        var one = new XmlDocument
+                        { PreserveWhitespace = true };
+                        var two = new XmlDocument
+                        { PreserveWhitespace = true };
                         var oneFile = Path.Combine(remotePlaylist, file);
                         var twoFile = Path.Combine(localPlaylist, file);
                         one.Load(oneFile);
@@ -243,17 +258,15 @@ namespace ProPresenterLocalSyncTool
                         Utils.CopyClone(flag ? oneFile : twoFile, flag ? twoFile : oneFile, true);
                     }
             }
-            /*
-             * LabelsPreferences.pro6pref
-             */
 
             Print(Environment.NewLine + "Sync complete!");
+
             var query = string.Format("SELECT ParentProcessId FROM Win32_Process WHERE ProcessId = " +
                                       Process.GetCurrentProcess().Id);
             var results = new ManagementObjectSearcher("root\\CIMV2", query).Get().GetEnumerator();
             results.MoveNext();
-            if (Process.GetProcessById((int)(uint)results.Current["ParentProcessId"]).ProcessName == "explorer" && !args.Exit)
-
+            if (Process.GetProcessById((int)(uint)results.Current["ParentProcessId"]).ProcessName == "explorer" &&
+                !args.Exit)
             {
                 Console.WriteLine("Press a key to exit");
                 Console.ReadKey(true);

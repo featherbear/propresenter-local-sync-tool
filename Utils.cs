@@ -42,7 +42,7 @@ namespace ProPresenterLocalSyncTool
             if (first.FullName == second.FullName)
                 return false;
 
-            var iterations = (int) Math.Ceiling((double) first.Length / BYTES_TO_READ);
+            var iterations = (int)Math.Ceiling((double)first.Length / BYTES_TO_READ);
 
             using (var fs1 = first.OpenRead())
             using (var fs2 = second.OpenRead())
@@ -95,7 +95,6 @@ namespace ProPresenterLocalSyncTool
 
         public static void CopyClone(string src, string dest, bool replace = false)
         {
-            Console.WriteLine(replace.ToString());
             var existed = File.Exists(dest);
             File.Copy(src, dest, replace);
             if (!existed || replace)
