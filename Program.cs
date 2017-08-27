@@ -52,7 +52,7 @@ namespace ProPresenterLocalSyncTool
                         var json = webClient.DownloadString(
                             "https://api.github.com/repos/bearbear12345/propresenter-local-sync-tool/releases/latest");
                         var remoteVersion = Regex.Match(json, "\"tag_name\":\"(.+?)\"").Groups[1].Value;
-                        if (new Version(versionInfo.ProductVersion).CompareTo(new Version(remoteVersion)) > 0)
+                        if (new Version(versionInfo.ProductVersion).CompareTo(new Version(remoteVersion)) < 0)
                         {
                             Print("New version (" + remoteVersion + ")... Retrieving");
                             var filePath = Process.GetCurrentProcess().MainModule.FileName;
