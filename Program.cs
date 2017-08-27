@@ -252,7 +252,8 @@ namespace ProPresenterLocalSyncTool
                                       Process.GetCurrentProcess().Id);
             var results = new ManagementObjectSearcher("root\\CIMV2", query).Get().GetEnumerator();
             results.MoveNext();
-            if (Process.GetProcessById((int)(uint)results.Current["ParentProcessId"]).ProcessName == "explorer")
+            if (Process.GetProcessById((int)(uint)results.Current["ParentProcessId"]).ProcessName == "explorer" && !args.Exit)
+
             {
                 Console.WriteLine("Press a key to exit");
                 Console.ReadKey(true);
