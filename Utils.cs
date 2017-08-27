@@ -42,7 +42,7 @@ namespace ProPresenterLocalSyncTool
             if (first.FullName == second.FullName)
                 return false;
 
-            var iterations = (int)Math.Ceiling((double)first.Length / BYTES_TO_READ);
+            var iterations = (int) Math.Ceiling((double) first.Length / BYTES_TO_READ);
 
             using (var fs1 = first.OpenRead())
             using (var fs2 = second.OpenRead())
@@ -85,7 +85,7 @@ namespace ProPresenterLocalSyncTool
                         conflict.Add(noConflictDirection
                             ? relativepath
                             : (new FileInfo(remotePath).LastWriteTime > new FileInfo(localPath).LastWriteTime
-                                  ? "_"
+                                  ? "/"
                                   : "") + relativepath);
                     ignore.Add(relativepath);
                 }

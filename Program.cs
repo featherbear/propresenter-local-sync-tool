@@ -228,6 +228,20 @@ namespace ProPresenterLocalSyncTool
                             _syncReplace);
                     }
                 if (_syncMode == 0)
+                    foreach (var file in compare["conflict"])
+                    {
+                        var one = new XmlDocument { PreserveWhitespace = true };
+                        var two = new XmlDocument { PreserveWhitespace = true };
+                        var oneFile = Path.Combine(remotePlaylist, file);
+                        var twoFile = Path.Combine(localPlaylist, file);
+                        one.Load(oneFile);
+                        two.Load(twoFile);
+                        var flag = DateTime.Parse(
+                                       one.GetElementsByTagName("RVDocumentCue")[0].Attributes["modifiedDate"].Value) >
+                                   DateTime.Parse(
+                                       two.GetElementsByTagName("RVDocumentCue")[0].Attributes["modifiedDate"].Value);
+                        Utils.CopyClone(flag ? oneFile : twoFile, flag ? twoFile : oneFile, true);
+                    }
             }
             /*
              * LabelsPreferences.pro6pref
@@ -271,7 +285,7 @@ namespace ProPresenterLocalSyncTool
             if (_syncMode == 0)
                 foreach (var cfile in compare["conflict"])
                 {
-                    var remoteNewer = cfile[0] == '_';
+                    var remoteNewer = cfile[0] == '/';
                     var file = remoteNewer ? cfile.Substring(1) : cfile;
                     Print("  " + (remoteNewer ? "Receiving" : "Uploading") + " " + file);
                     Utils.CopyClone(Path.Combine(remoteNewer ? remoteDir : localDir, file),
