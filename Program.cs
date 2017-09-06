@@ -211,26 +211,13 @@ namespace ProPresenterLocalSyncTool
             {
                 Print(Environment.NewLine + "Syncing playlist");
 
-                var compare = Utils.CompareDirectory(remotePlaylist, localPlaylist, false, true);
+                var compare = Utils.CompareDirectory(remotePlaylist, localPlaylist, false);
                 Directory.CreateDirectory(remotePlaylist);
                 if (_syncMode != 1)
                     foreach (var file in compare["new"])
                     {
                         Print("  Receiving " + file);
-
-                        var playlist = new XmlDocument
-                        {
-                            PreserveWhitespace = true
-                        };
-                        var sourceFile = Path.Combine(remotePlaylist, file);
-                        var targetFile = Path.Combine(localPlaylist, file);
-                        playlist.Load(sourceFile);
-                        foreach (XmlNode item in playlist.GetElementsByTagName("RVDocumentCue"))
-                            item.Attributes["filePath"].Value =
-                                Uri.EscapeDataString(localLibrary) + item.Attributes["filePath"].Value
-                                    .Split(new[] { "%5C" }, StringSplitOptions.None).Reverse().ToArray()[0];
-                        playlist.Save(targetFile);
-                        Utils.MirrorTimestamps(sourceFile, targetFile);
+                        LocalisePlaylist(file, remotePlaylist, localPlaylist, localLibrary);
                     }
 
                 if (_syncMode != -1)
@@ -251,11 +238,20 @@ namespace ProPresenterLocalSyncTool
                         var twoFile = Path.Combine(localPlaylist, file);
                         one.Load(oneFile);
                         two.Load(twoFile);
-                        var flag = DateTime.Parse(
-                                       one.GetElementsByTagName("RVDocumentCue")[0].Attributes["modifiedDate"].Value) >
-                                   DateTime.Parse(
-                                       two.GetElementsByTagName("RVDocumentCue")[0].Attributes["modifiedDate"].Value);
-                        Utils.CopyClone(flag ? oneFile : twoFile, flag ? twoFile : oneFile, true);
+
+                        if (DateTime.Parse(
+                                one.GetElementsByTagName("RVDocumentCue")[0].Attributes["modifiedDate"].Value) >
+                            DateTime.Parse(
+                                two.GetElementsByTagName("RVDocumentCue")[0].Attributes["modifiedDate"].Value))
+                        {
+                            Print("  Receiving " + file);
+                            LocalisePlaylist(file, remotePlaylist, localPlaylist, localLibrary);
+                        }
+                        else
+                        {
+                            Print("  Uploading " + file);
+                            Utils.CopyClone(twoFile, oneFile, true);
+                        }
                     }
             }
 
@@ -271,6 +267,24 @@ namespace ProPresenterLocalSyncTool
                 Console.WriteLine("Press a key to exit");
                 Console.ReadKey(true);
             }
+        }
+
+        private static void LocalisePlaylist(string file, string remotePlaylist, string localPlaylist,
+            string localLibrary)
+        {
+            var playlist = new XmlDocument
+            {
+                PreserveWhitespace = true
+            };
+            var sourceFile = Path.Combine(remotePlaylist, file);
+            var targetFile = Path.Combine(localPlaylist, file);
+            playlist.Load(sourceFile);
+            foreach (XmlNode item in playlist.GetElementsByTagName("RVDocumentCue"))
+                item.Attributes["filePath"].Value =
+                    Uri.EscapeDataString(localLibrary) + item.Attributes["filePath"].Value
+                        .Split(new[] { "%5C" }, StringSplitOptions.None).Reverse().ToArray()[0];
+            playlist.Save(targetFile);
+            Utils.MirrorTimestamps(sourceFile, targetFile);
         }
 
         private static void SynchroniseWithRemote(string remoteDir, string localDir)
@@ -296,15 +310,21 @@ namespace ProPresenterLocalSyncTool
                     Utils.CopyClone(Path.Combine(localDir, file), Path.Combine(remoteDir, file),
                         _syncReplace);
                 }
-            if (_syncMode == 0)
+            if (_syncReplace)
                 foreach (var cfile in compare["conflict"])
                 {
                     var remoteNewer = cfile[0] == '/';
                     var file = remoteNewer ? cfile.Substring(1) : cfile;
-                    Print("  " + (remoteNewer ? "Receiving" : "Uploading") + " " + file);
-                    Utils.CopyClone(Path.Combine(remoteNewer ? remoteDir : localDir, file),
-                        Path.Combine(remoteNewer ? localDir : remoteDir, file),
-                        true);
+                    if (remoteNewer && _syncMode != 1)
+                    {
+                        Print("  Receiving " + file);
+                        Utils.CopyClone(Path.Combine(remoteDir, file), Path.Combine(localDir, file), true);
+                    }
+                    else if (!remoteNewer && _syncMode != -1)
+                    {
+                        Print("  Uploading " + file);
+                        Utils.CopyClone(Path.Combine(localDir, file), Path.Combine(remoteDir, file), true);
+                    }
                 }
         }
     }

@@ -39,10 +39,10 @@ namespace ProPresenterLocalSyncTool
         [Option('P', "no-playlist", HelpText = "Do not sync playlists", MutuallyExclusiveSet = "syncPlaylist")]
         public bool SyncPlaylistNo { get; set; }
 
-        [Option('r', "replace", HelpText = "Replace files", MutuallyExclusiveSet = "syncReplace")]
+        [Option('k', "keep", HelpText = "Replace existing files", MutuallyExclusiveSet = "syncReplace")]
         public bool SyncReplace { get; set; }
 
-        [Option('R', "no-replace", HelpText = "Do not replace files", MutuallyExclusiveSet = "syncReplace")]
+        [Option('K', "no-keep", HelpText = "Do not modify existing files", MutuallyExclusiveSet = "syncReplace")]
         public bool SyncReplaceNo { get; set; }
 
         [Option('s', "source",

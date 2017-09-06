@@ -9,7 +9,7 @@ namespace ProPresenterLocalSyncTool
         private const int BYTES_TO_READ = sizeof(long);
 
         public static Dictionary<string, List<string>> CompareDirectory(string remoteDir, string localDir,
-            bool recursive = true, bool noConflictDirection = false)
+            bool recursive = true)
         {
             if (!remoteDir.EndsWith("\\")) remoteDir += "\\";
             if (!localDir.EndsWith("\\")) localDir += "\\";
@@ -17,9 +17,8 @@ namespace ProPresenterLocalSyncTool
             var ignore = new List<string>();
             var conflicts = new List<string>();
 
-            var inRemote = _CompareDirectory(remoteDir, localDir, ignore, conflicts, noConflictDirection);
-            var inLocal = _CompareDirectory(localDir, remoteDir, ignore, conflicts, noConflictDirection);
-
+            var inRemote = _CompareDirectory(remoteDir, localDir, ignore, conflicts);
+            var inLocal = _CompareDirectory(localDir, remoteDir, ignore, conflicts);
             return new Dictionary<string, List<string>>
             {
                 {"new", inRemote},
@@ -69,7 +68,7 @@ namespace ProPresenterLocalSyncTool
         }
 
         private static List<string> _CompareDirectory(string remoteDir, string localDir, List<string> ignore,
-            List<string> conflict, bool noConflictDirection = false)
+            List<string> conflict)
         {
             var result = new List<string>();
             foreach (var remotePath in Directory.GetFiles(remoteDir, "*.*",
@@ -79,14 +78,13 @@ namespace ProPresenterLocalSyncTool
                 var localPath = Path.Combine(localDir, relativepath);
                 if (!ignore.Contains(relativepath))
                 {
-                    if (!File.Exists(localPath)) result.Add(relativepath);
+                    if (!File.Exists(localPath))
+                        result.Add(relativepath);
                     // File exists only in first path
                     else if (FileDiff(remotePath, localPath))
-                        conflict.Add(noConflictDirection
-                            ? relativepath
-                            : (new FileInfo(remotePath).LastWriteTime > new FileInfo(localPath).LastWriteTime
-                                  ? "/"
-                                  : "") + relativepath);
+                        conflict.Add((new FileInfo(remotePath).LastWriteTime > new FileInfo(localPath).LastWriteTime
+                                         ? "/"
+                                         : "") + relativepath);
                     ignore.Add(relativepath);
                 }
             }
