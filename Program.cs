@@ -227,32 +227,33 @@ namespace ProPresenterLocalSyncTool
                         Utils.CopyClone(Path.Combine(localPlaylist, file), Path.Combine(remotePlaylist, file),
                             _syncReplace);
                     }
-                if (_syncMode == 0)
-                    foreach (var file in compare["conflict"])
-                    {
-                        var one = new XmlDocument
-                        { PreserveWhitespace = true };
-                        var two = new XmlDocument
-                        { PreserveWhitespace = true };
-                        var oneFile = Path.Combine(remotePlaylist, file);
-                        var twoFile = Path.Combine(localPlaylist, file);
-                        one.Load(oneFile);
-                        two.Load(twoFile);
 
-                        if (DateTime.Parse(
-                                one.GetElementsByTagName("RVDocumentCue")[0].Attributes["modifiedDate"].Value) >
-                            DateTime.Parse(
-                                two.GetElementsByTagName("RVDocumentCue")[0].Attributes["modifiedDate"].Value))
-                        {
-                            Print("  Receiving " + file);
-                            LocalisePlaylist(file, remotePlaylist, localPlaylist, localLibrary);
-                        }
-                        else
-                        {
-                            Print("  Uploading " + file);
-                            Utils.CopyClone(twoFile, oneFile, true);
-                        }
+                foreach (var file in compare["conflict"])
+                {
+                    var cfile = file[0] == '/' ? file.Substring(1) : file;
+                    var one = new XmlDocument
+                    { PreserveWhitespace = true };
+                    var two = new XmlDocument
+                    { PreserveWhitespace = true };
+                    var oneFile = Path.Combine(remotePlaylist, cfile);
+                    var twoFile = Path.Combine(localPlaylist, cfile);
+                    one.Load(oneFile);
+                    two.Load(twoFile);
+                    if (DateTime.Parse(
+                            one.GetElementsByTagName("RVPlaylistNode")[0].Attributes["modifiedDate"].Value) >
+                        DateTime.Parse(
+                            two.GetElementsByTagName("RVPlaylistNode")[0].Attributes["modifiedDate"].Value) &&
+                        _syncMode != 1)
+                    {
+                        Print("  Receiving " + cfile);
+                        LocalisePlaylist(cfile, remotePlaylist, localPlaylist, localLibrary);
                     }
+                    else if (_syncMode != -1)
+                    {
+                        Print("  Uploading " + cfile);
+                        Utils.CopyClone(twoFile, oneFile, true);
+                    }
+                }
             }
 
             Print(Environment.NewLine + "Sync complete!");
